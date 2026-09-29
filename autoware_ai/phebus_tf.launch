@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<!-- Phebus · AUTONOMOUS CAMPUS · CIFP Mendizabala LHII
+     Posiciones de los sensores respecto a base_link: centro del eje trasero, a ras de suelo.
+     Ejes: x hacia delante, y hacia la izquierda, z hacia arriba. Metros y radianes.
+     Argumentos de static_transform_publisher: x y z yaw pitch roll marco_padre marco_hijo
+     Los nombres de los marcos hijos deben coincidir con el frame_id de cada controlador instalado. -->
+<launch>
+  <!-- LiDAR RoboSense RS-LiDAR-16: centro óptico a 1,44 m (base a 1,41 m) -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="tf_lidar"    args="0.42  0.00 1.44  0 0 0 base_link rslidar"/>
+  <!-- Cámara FLIR con óptica de 12 mm, mirando hacia delante (inclinación pendiente de medir) -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="tf_camara"   args="0.465 0.00 1.34  0 0 0 base_link camera"/>
+  <!-- Antena GNSS trasera (posición) y delantera (rumbo) del CHCNAV CGI-410 -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="tf_gnss"     args="0.30  0.00 1.036 0 0 0 base_link gnss"/>
+  <node pkg="tf2_ros" type="static_transform_publisher" name="tf_gnss_aux" args="1.83  0.00 0.648 0 0 0 base_link gnss_aux"/>
+  <!-- Unidad inercial del CGI-410, dentro de la caja trasera. Posición aproximada; comprobar su giro con los ejes X, Y, Z marcados en la tapa -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="tf_imu"      args="-0.07 0.09 0.556 0 0 0 base_link imu"/>
+</launch>
