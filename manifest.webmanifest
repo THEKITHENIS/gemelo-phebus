@@ -1,0 +1,29 @@
+{
+  "name": "Gemelo digital · Chasis autónomo Phebus",
+  "short_name": "Phebus VR",
+  "description": "Gemelo digital del chasis autónomo Phebus · AUTONOMOUS CAMPUS · CIFP Mendizabala LHII",
+  "lang": "es",
+  "start_url": "./?vr=1",
+  "scope": "./",
+  "display": "fullscreen",
+  "background_color": "#0c121a",
+  "theme_color": "#0f7d75",
+  "icons": [
+    {
+      "src": "iconos/icono-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "iconos/icono-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "iconos/icono-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
