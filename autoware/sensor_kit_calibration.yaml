@@ -1,0 +1,34 @@
+# Posiciones respecto a sensor_kit_base_link (base del LiDAR). Metros y radianes.
+sensor_kit_base_link:
+  lidar_top_base_link:          # RoboSense RS-LiDAR-16
+    x: 0.000
+    y: 0.000
+    z: 0.030                    # medido: centro óptico a unos 144 cm del suelo
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+  camera0/camera_link:          # FLIR GigE + óptica ZX-SF1220C de 12 mm, bajo el travesaño superior del bastidor, mirando hacia delante
+    x: 0.045
+    y: 0.000
+    z: -0.070                   # medido: cámara a 134 cm del suelo
+    roll: 0.0
+    pitch: 0.0                  # inclinación hacia abajo pendiente de medir (positivo = mira al suelo)
+    yaw: 0.0
+  gnss_link:                    # antena GNSS trasera (principal), champiñón sobre la tapa, entre las patas del tramo bajo
+    x: -0.120
+    y: 0.000
+    z: -0.374                   # disco a unos 104 cm del suelo
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+  gnss_aux_link:                # antena GNSS delantera, sobre el contenedor delantero (rumbo por doble antena)
+    x: 1.410
+    y: 0.000
+    z: -0.762                   # disco a unos 65 cm del suelo
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+# Línea de base entre antenas: 1,53 m en horizontal, con la delantera 39 cm más baja.
+# Estructura: torre de perfiles de tres niveles apoyada sobre la tapa del contenedor trasero;
+# caja de policarbonato con el ancho del contenedor y la tapa a 53,5 cm de la plataforma central;
+# sus montantes delanteros bajan hasta la plataforma y encima va un bastidor plano de dos tramos hasta el LiDAR.

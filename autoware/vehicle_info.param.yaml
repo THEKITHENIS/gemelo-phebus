@@ -1,0 +1,13 @@
+# Phebus sobre base PIX · datos del manual de Phebus
+/**:
+  ros__parameters:
+    wheel_radius: 0.308          # 205/45 R17, 616 mm de diámetro
+    wheel_width: 0.205
+    wheel_base: 1.900
+    wheel_tread: 1.355
+    front_overhang: 0.295        # (2 490 - 1 900) / 2
+    rear_overhang: 0.295
+    left_overhang: 0.0725        # (1 500 - 1 355) / 2
+    right_overhang: 0.0725
+    vehicle_height: 1.491        # hasta lo alto del LiDAR (141 + 8,1 cm)
+    max_steer_angle: 0.5585      # 32 grados en la rueda interior

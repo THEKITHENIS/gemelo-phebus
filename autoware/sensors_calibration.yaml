@@ -1,0 +1,11 @@
+# Phebus · AUTONOMOUS CAMPUS · CIFP Mendizabala LHII
+# base_link: centro del eje trasero a ras de suelo. x adelante, y izquierda, z arriba. Metros y radianes.
+# sensor_kit_base_link: base del LiDAR, en lo alto del mástil que sale del cajón trasero.
+base_link:
+  sensor_kit_base_link:
+    x: 0.420       # plano del bastidor de sensores: cara delantera de la caja, donde empieza el contenedor trasero
+    y: 0.000
+    z: 1.410       # medido: base del LiDAR a 141 cm del suelo
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
