@@ -475,7 +475,7 @@ footer{
 
 <footer>
   <span class="foot-txt" data-i18n="foot1">Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)</span>
-  <span data-i18n="foot2">v8.8 · septiembre de 2026</span>
+  <span data-i18n="foot2">v8.9 · septiembre de 2026</span>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -513,7 +513,7 @@ var TXT = {
   v_path:{es:"Trayectoria", eu:"Ibilbidea"},
   foot1:{es:"Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)",
          eu:"Datuak eta argazkiak: Phebus-en eskuliburua, haien baimenarekin · 3D eredua PIX Moving-etik eratorria (Apache-2.0)"},
-  foot2:{es:"v8.8 · septiembre de 2026", eu:"v1.4 · 2026ko iraila"},
+  foot2:{es:"v8.9 · septiembre de 2026", eu:"v1.4 · 2026ko iraila"},
   tab_drive:{es:"Conducción", eu:"Gidatzea"},
   tab_comp:{es:"Piezas", eu:"Piezak"},
   tab_spec:{es:"Ficha técnica", eu:"Fitxa teknikoa"},
@@ -2215,7 +2215,7 @@ function entraVR(){
     return ses.requestReferenceSpace("local-floor").then(function(){ return "local-floor"; }, function(){ return "local"; })
     .then(function(tipo){
       vr.tipoRef=tipo; vr.alturaOjos=(tipo==="local") ? 1.6 : 0;
-      renderer.xr.setFramebufferScaleFactor(vr.autonomas ? 0.75 : 1.0);   // los splats cuestan por píxel pintado
+      renderer.xr.setFramebufferScaleFactor(1.0);   // resolución completa: con menos, las Pico se quedan en negro
       renderer.xr.enabled=true;
       renderer.xr.setReferenceSpaceType(tipo);
       if(renderer.xr.setFoveation) renderer.xr.setFoveation(1);
@@ -2236,10 +2236,17 @@ function entraVR(){
   });
 }
 var PRESU_VR={movil:150000, alta:250000, maxima:400000};   // tope de splats en gafas autónomas (Quest 2 y similares)
+var AJUSTES_VR={maxStdDev:Math.sqrt(5), behindFoveate:0.1, outsideFoveate:0.3, coneFov0:40, coneFov:100, coneFoveate:0.5};
 function aplicaPresupuestoVR(){
   if(typeof sparkR==="undefined" || !sparkR) return;
-  if(vr.sesion && vr.autonomas){ sparkR.lodSplatCount=PRESU_VR[nivelCirc||"alta"]; sparkR.lodSplatScale=1; }
-  else { sparkR.lodSplatCount=undefined; sparkR.lodSplatScale=ESCALA_LOD[nivelCirc]||1; }   // fuera de VR, el automático de Spark
+  if(!vr.ajustesPantalla){ vr.ajustesPantalla={}; for(var k in AJUSTES_VR) vr.ajustesPantalla[k]=sparkR[k]; }   // para poder volver a ellos
+  if(vr.sesion){
+    for(var k2 in AJUSTES_VR) sparkR[k2]=AJUSTES_VR[k2];      // detalle donde miras; atrás y a los lados, más grueso
+    if(vr.autonomas){ sparkR.lodSplatCount=PRESU_VR[nivelCirc||"alta"]; sparkR.lodSplatScale=1; }
+  } else {
+    for(var k3 in vr.ajustesPantalla) sparkR[k3]=vr.ajustesPantalla[k3];
+    sparkR.lodSplatCount=undefined; sparkR.lodSplatScale=ESCALA_LOD[nivelCirc]||1;   // fuera de VR, el automático de Spark
+  }
 }
 function redondo(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
 function envuelve(c,txt,x,y,maxW,alto,maxL){
@@ -2277,6 +2284,11 @@ function montaVR(){
   }
   vr.camPos=camera.position.clone(); vr.camQuat=camera.quaternion.clone();
   vr.rig.add(camera); camera.position.set(0,0,0); camera.quaternion.identity();
+  if(!vr.velo){
+    vr.velo=new THREE.Mesh(new THREE.SphereGeometry(0.25,16,12), new THREE.MeshBasicMaterial({color:0x000000, side:THREE.BackSide, transparent:true, opacity:0, depthTest:false}));
+    vr.velo.renderOrder=2000; vr.velo.visible=false;
+  }
+  camera.add(vr.velo); vr.parpadeo=0;
   vr.rig.add(vr.panel); vr.panel.position.set(-0.35,1.15,-0.55); vr.panel.rotation.set(-0.35,0.45,0);
   colocaRig(true);
   pintaMenuVR();
@@ -2285,6 +2297,7 @@ function saleVR(){
   vr.sesion=null;
   if(vr.fallo){ var f=vr.fallo; vr.fallo=null; setTimeout(function(){ avisa(t("vr_err")+" "+f, 15000); }, 300); }
   aplicaPresupuestoVR();
+  if(vr.velo){ vr.velo.visible=false; camera.remove(vr.velo); }
   if(vr.rig) vr.rig.remove(camera);
   if(vr.camPos){ camera.position.copy(vr.camPos); camera.quaternion.copy(vr.camQuat); }
   if(vr.info) vr.info.visible=false;
@@ -2304,11 +2317,13 @@ function colocaRig(forzar, dt){
   // Mantiene tu orientación y, cuando el coche se desvía más de 40°, se reorienta de golpe.
   yaw=st.psi+Math.PI;
   var d=Math.atan2(Math.sin(yaw-vr.rig.rotation.y), Math.cos(yaw-vr.rig.rotation.y));
-  if(forzar || !dt || Math.abs(d)>0.7) vr.rig.rotation.set(0,yaw,0);
+  var salta=Math.abs(d)>1.05;                                   // 60°: menos saltos en las curvas largas
+  if(salta && !forzar && dt) vr.parpadeo=1;                      // cada salto, tapado con un parpadeo
+  if(forzar || !dt || salta) vr.rig.rotation.set(0,yaw,0);
   var g=vr.rig.rotation.y, vx=-Math.sin(g), vz=-Math.cos(g);        // hacia dónde miras
   if(vr.vista==="persecucion") obj.set(cp.x-4.5*vx, cp.y+(vr.alturaOjos||0), cp.z-4.5*vz);
   else obj.set(cp.x+0.15*fx, cp.y+(vr.alturaOjos||0), cp.z+0.15*fz);
-  if(forzar || !dt || Math.abs(d)>0.7){ vr.rig.position.copy(obj); return; }
+  if(forzar || !dt || salta){ vr.rig.position.copy(obj); return; }
   vr.rig.position.lerp(obj, 1-Math.exp(-dt*8));
 }
 function cicloVista(){ var o=["pie","persecucion","bordo"]; vr.vista=o[(o.indexOf(vr.vista)+1)%3]; colocaRig(true); }
@@ -2449,6 +2464,7 @@ function pasoVR(dt){
     var ln=der.getObjectByName("rayo"); if(ln) ln.scale.z = h.dist ? Math.min(h.dist,8) : 4;
   }
   colocaRig(false, dt);
+  if(vr.velo){ if(vr.parpadeo>0) vr.parpadeo=Math.max(0, vr.parpadeo-dt/0.3); vr.velo.material.opacity=vr.parpadeo; vr.velo.visible=vr.parpadeo>0.01; }
   vr.tMenu+=dt; if(vr.tMenu>0.5){ vr.tMenu=0; pintaMenuVR(); }
 }
 function compruebaGrafica(){
