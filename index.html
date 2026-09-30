@@ -475,7 +475,7 @@ footer{
 
 <footer>
   <span class="foot-txt" data-i18n="foot1">Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)</span>
-  <span data-i18n="foot2">v8.5 · septiembre de 2026</span>
+  <span data-i18n="foot2">v8.6 · septiembre de 2026</span>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -513,7 +513,7 @@ var TXT = {
   v_path:{es:"Trayectoria", eu:"Ibilbidea"},
   foot1:{es:"Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)",
          eu:"Datuak eta argazkiak: Phebus-en eskuliburua, haien baimenarekin · 3D eredua PIX Moving-etik eratorria (Apache-2.0)"},
-  foot2:{es:"v8.5 · septiembre de 2026", eu:"v1.4 · 2026ko iraila"},
+  foot2:{es:"v8.6 · septiembre de 2026", eu:"v1.4 · 2026ko iraila"},
   tab_drive:{es:"Conducción", eu:"Gidatzea"},
   tab_comp:{es:"Piezas", eu:"Piezak"},
   tab_spec:{es:"Ficha técnica", eu:"Fitxa teknikoa"},
@@ -1529,6 +1529,7 @@ function setDriving(on){
   if(b){ b.textContent = on ? t("d_stop") : t("d_drive"); b.className = on ? "btn" : "btn primary"; }
 }
 function syncInputs(){
+  if(renderer && renderer.xr && renderer.xr.isPresenting) return;   // en las gafas los paneles no se ven
   var ia=document.getElementById("in-angle"), iv=document.getElementById("in-speed");
   if(ia){ ia.value=st.inner; document.getElementById("out-angle").textContent=fmt(st.inner,0)+"°"; }
   if(iv){ iv.value=st.v; document.getElementById("out-speed").textContent=fmt(st.v,1)+" km/h"; }
@@ -2090,6 +2091,7 @@ function cargaSpark(){
 function cargaNivel(nivel){
   nivelCirc=nivel; nivelActual=nivel;
   if(sparkR) sparkR.lodSplatScale=ESCALA_LOD[nivel]||1;
+  if(typeof aplicaPresupuestoVR==="function") aplicaPresupuestoVR();
   pintaCalidad(); pintaZonasInfo();
   return Promise.resolve();
 }
@@ -2139,6 +2141,7 @@ function cargaCircuito(){
     sparkR=new S.SparkRenderer({renderer:renderer, pagedExtSplats:true});   // precisión ampliada: el circuito mide ~200 m
     sparkR.lodSplatScale=ESCALA_LOD[nivelCirc]||1;
     scene.add(sparkR);
+    aplicaPresupuestoVR();
     ind.zonas.forEach(function(z){
       var m=new S.SplatMesh({url:"rad/"+z+".compressed-lod.rad", paged:true});
       m.userData.spark=true; circGrupo.add(m); splatsSpark.push(m);
@@ -2166,7 +2169,7 @@ function alternaMedidor(){
 }
 function mide(){
   var ahora=performance.now(), ms=ahora-medUlt; medUlt=ahora;
-  if(!medidor) return;
+  if(!medidor || (renderer.xr && renderer.xr.isPresenting)) return;
   medT.push([ahora,ms]); while(medT.length && ahora-medT[0][0]>10000) medT.shift();
   medN++; medAcc+=ms;
   if(medAcc>=1000){
@@ -2206,13 +2209,22 @@ function entraVR(){
   if(vr.sesion){ vr.sesion.end(); return; }
   navigator.xr.requestSession("immersive-vr",{optionalFeatures:["local-floor","bounded-floor"]}).then(function(ses){
     vr.sesion=ses;
+    vr.autonomas=/OculusBrowser|Quest|Pico/i.test(navigator.userAgent);    // Quest o Pico sin ordenador
+    renderer.xr.setFramebufferScaleFactor(vr.autonomas ? 0.75 : 1.0);      // los splats cuestan por píxel pintado
     renderer.xr.enabled=true;
     renderer.xr.setReferenceSpaceType("local-floor");
     if(renderer.xr.setFoveation) renderer.xr.setFoveation(1);
     montaVR();
     renderer.xr.setSession(ses);
     ses.addEventListener("end", saleVR);
+    aplicaPresupuestoVR();
   }).catch(function(e){ avisa(t("vr_err")+" "+((e&&e.message)||""), 6000); });
+}
+var PRESU_VR={movil:150000, alta:250000, maxima:400000};   // tope de splats en gafas autónomas (Quest 2 y similares)
+function aplicaPresupuestoVR(){
+  if(typeof sparkR==="undefined" || !sparkR) return;
+  if(vr.sesion && vr.autonomas){ sparkR.lodSplatCount=PRESU_VR[nivelCirc||"alta"]; sparkR.lodSplatScale=1; }
+  else { sparkR.lodSplatCount=undefined; sparkR.lodSplatScale=ESCALA_LOD[nivelCirc]||1; }   // fuera de VR, el automático de Spark
 }
 function redondo(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
 function envuelve(c,txt,x,y,maxW,alto,maxL){
@@ -2256,6 +2268,7 @@ function montaVR(){
 }
 function saleVR(){
   vr.sesion=null;
+  aplicaPresupuestoVR();
   if(vr.rig) vr.rig.remove(camera);
   if(vr.camPos){ camera.position.copy(vr.camPos); camera.quaternion.copy(vr.camQuat); }
   if(vr.info) vr.info.visible=false;
@@ -2266,13 +2279,21 @@ function saleVR(){
 function colocaRig(forzar, dt){
   if(!vr.rig) return;
   var cp=car.position, fx=Math.sin(st.psi), fz=Math.cos(st.psi), obj=new THREE.Vector3(), yaw;
-  if(vr.vista==="persecucion"){ obj.set(cp.x-4.5*fx, cp.y, cp.z-4.5*fz); yaw=st.psi+Math.PI; }
-  else if(vr.vista==="bordo"){ obj.set(cp.x+0.15*fx, cp.y, cp.z+0.15*fz); yaw=st.psi+Math.PI; }
-  else { if(!forzar) return; obj.set(cp.x+2.6*fz, cp.y, cp.z-2.6*fx); yaw=Math.atan2(cp.x-obj.x, cp.z-obj.z)+Math.PI; }
-  if(forzar || !dt){ vr.rig.position.copy(obj); vr.rig.rotation.set(0,yaw,0); return; }
-  vr.rig.position.lerp(obj, 1-Math.exp(-dt*5));
+  if(vr.vista==="pie"){
+    if(!forzar) return;
+    obj.set(cp.x+2.6*fz, cp.y, cp.z-2.6*fx); yaw=Math.atan2(cp.x-obj.x, cp.z-obj.z)+Math.PI;
+    vr.rig.position.copy(obj); vr.rig.rotation.set(0,yaw,0); return;
+  }
+  // persecución y a bordo: la cámara nunca gira sola de forma continua (es lo que más marea en VR).
+  // Mantiene tu orientación y, cuando el coche se desvía más de 40°, se reorienta de golpe.
+  yaw=st.psi+Math.PI;
   var d=Math.atan2(Math.sin(yaw-vr.rig.rotation.y), Math.cos(yaw-vr.rig.rotation.y));
-  vr.rig.rotation.y += d*(1-Math.exp(-dt*2.5));              // el giro, suave: marea menos
+  if(forzar || !dt || Math.abs(d)>0.7) vr.rig.rotation.set(0,yaw,0);
+  var g=vr.rig.rotation.y, vx=-Math.sin(g), vz=-Math.cos(g);        // hacia dónde miras
+  if(vr.vista==="persecucion") obj.set(cp.x-4.5*vx, cp.y, cp.z-4.5*vz);
+  else obj.set(cp.x+0.15*fx, cp.y, cp.z+0.15*fz);
+  if(forzar || !dt || Math.abs(d)>0.7){ vr.rig.position.copy(obj); return; }
+  vr.rig.position.lerp(obj, 1-Math.exp(-dt*8));
 }
 function cicloVista(){ var o=["pie","persecucion","bordo"]; vr.vista=o[(o.indexOf(vr.vista)+1)%3]; colocaRig(true); }
 function vrAutonomo(){
@@ -2298,7 +2319,7 @@ function pintaMenuVR(){
     {t: L("vr_elec")+(st.interior?"  ✓":""), a:function(){ st.interior=!st.interior; pintaInterior(); try{ renderElec(); renderParts(); }catch(e){} }},
     {t: L("vr_lidar")+": "+lm[st.lidarModo||"off"], a:function(){ if(!st.circ) document.getElementById("t-circ").click(); var o=["off","circuito","solo","mapa"]; modoLidar(o[(o.indexOf(st.lidarModo||"off")+1)%4]); }},
     {t: st.obst ? L("vr_obst_off") : L("vr_obst_on"), a:function(){ if(st.circ) colocaObstaculo(!st.obst); }},
-    {t: L("vr_cal")+": "+({movil:L("vr_q_movil"), alta:L("vr_q_alta"), maxima:L("vr_q_max")})[nivelCirc||"alta"], a:function(){ var o=["movil","alta","maxima"]; cargaNivel(o[(o.indexOf(nivelCirc||"alta")+1)%3]); }},
+    {t: L("vr_cal")+": "+({movil:L("vr_q_movil"), alta:L("vr_q_alta"), maxima:L("vr_q_max")})[nivelCirc||"alta"]+(vr.autonomas?" · "+Math.round(PRESU_VR[nivelCirc||"alta"]/1000)+" k":""), a:function(){ var o=["movil","alta","maxima"]; cargaNivel(o[(o.indexOf(nivelCirc||"alta")+1)%3]); }},
     {t: L("vr_salir"), a:function(){ if(vr.sesion) vr.sesion.end(); }}
   ];
   var c=vr.cvs.getContext("2d"), W=vr.cvs.width, H=vr.cvs.height;
@@ -3744,6 +3765,7 @@ function pintaZonaVs(C){
   vsZona.visible=true;
 }
 function pintaRos(dt){
+  if(renderer.xr && renderer.xr.isPresenting) return;
   var el=document.getElementById("aw-ros"); if(!el) return;
   rosT+=dt; if(rosT<0.25) return;
   var w=0; if(rosPsi!==null){ var d=st.psi-rosPsi; d=Math.atan2(Math.sin(d),Math.cos(d)); w=d/rosT; }
