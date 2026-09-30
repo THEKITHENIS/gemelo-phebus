@@ -475,7 +475,7 @@ footer{
 
 <footer>
   <span class="foot-txt" data-i18n="foot1">Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)</span>
-  <span data-i18n="foot2">v8.6 · septiembre de 2026</span>
+  <span data-i18n="foot2">v8.7 · septiembre de 2026</span>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -513,7 +513,7 @@ var TXT = {
   v_path:{es:"Trayectoria", eu:"Ibilbidea"},
   foot1:{es:"Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)",
          eu:"Datuak eta argazkiak: Phebus-en eskuliburua, haien baimenarekin · 3D eredua PIX Moving-etik eratorria (Apache-2.0)"},
-  foot2:{es:"v8.6 · septiembre de 2026", eu:"v1.4 · 2026ko iraila"},
+  foot2:{es:"v8.7 · septiembre de 2026", eu:"v1.4 · 2026ko iraila"},
   tab_drive:{es:"Conducción", eu:"Gidatzea"},
   tab_comp:{es:"Piezas", eu:"Piezak"},
   tab_spec:{es:"Ficha técnica", eu:"Fitxa teknikoa"},
@@ -2199,15 +2199,15 @@ function iniciaVR(){
   if(!navigator.xr || !navigator.xr.isSessionSupported) return;
   navigator.xr.isSessionSupported("immersive-vr").then(function(ok){
     var b=document.getElementById("vr-btn"); if(!ok || !b) return;
-    b.hidden=false; b.onclick=entraVR;
-    // abierta como app instalada (?vr=1): en las gafas, abrir la app cuenta como gesto del usuario y entra directa en VR
-    var app=matchMedia("(display-mode: standalone), (display-mode: fullscreen)").matches;
-    if(app && new URLSearchParams(location.search).get("vr")==="1") setTimeout(function(){ if(!vr.sesion) entraVR(); }, 2500);
+    b.hidden=false; b.onclick=entraVR;      // se entra siempre con el botón: la entrada automática no la admiten todas las gafas
   }).catch(function(){});
 }
 function entraVR(){
   if(vr.sesion){ vr.sesion.end(); return; }
+  if(vr.pidiendo) return;                  // no lanzar otra petición mientras hay una en curso
+  vr.pidiendo=true;
   navigator.xr.requestSession("immersive-vr",{optionalFeatures:["local-floor","bounded-floor"]}).then(function(ses){
+    vr.pidiendo=false;
     vr.sesion=ses;
     vr.autonomas=/OculusBrowser|Quest|Pico/i.test(navigator.userAgent);    // Quest o Pico sin ordenador
     renderer.xr.setFramebufferScaleFactor(vr.autonomas ? 0.75 : 1.0);      // los splats cuestan por píxel pintado
@@ -2218,7 +2218,7 @@ function entraVR(){
     renderer.xr.setSession(ses);
     ses.addEventListener("end", saleVR);
     aplicaPresupuestoVR();
-  }).catch(function(e){ avisa(t("vr_err")+" "+((e&&e.message)||""), 6000); });
+  }).catch(function(e){ vr.pidiendo=false; avisa(t("vr_err")+" "+(e ? (e.name||"")+(e.message?": "+e.message:"") : ""), 10000); });
 }
 var PRESU_VR={movil:150000, alta:250000, maxima:400000};   // tope de splats en gafas autónomas (Quest 2 y similares)
 function aplicaPresupuestoVR(){
