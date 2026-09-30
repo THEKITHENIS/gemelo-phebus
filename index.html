@@ -475,7 +475,7 @@ footer{
 
 <footer>
   <span class="foot-txt" data-i18n="foot1">Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)</span>
-  <span data-i18n="foot2">v8.7 · septiembre de 2026</span>
+  <span data-i18n="foot2">v8.8 · septiembre de 2026</span>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -513,7 +513,7 @@ var TXT = {
   v_path:{es:"Trayectoria", eu:"Ibilbidea"},
   foot1:{es:"Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)",
          eu:"Datuak eta argazkiak: Phebus-en eskuliburua, haien baimenarekin · 3D eredua PIX Moving-etik eratorria (Apache-2.0)"},
-  foot2:{es:"v8.7 · septiembre de 2026", eu:"v1.4 · 2026ko iraila"},
+  foot2:{es:"v8.8 · septiembre de 2026", eu:"v1.4 · 2026ko iraila"},
   tab_drive:{es:"Conducción", eu:"Gidatzea"},
   tab_comp:{es:"Piezas", eu:"Piezak"},
   tab_spec:{es:"Ficha técnica", eu:"Fitxa teknikoa"},
@@ -572,6 +572,7 @@ var TXT = {
   med_t:{es:"Fluidez (tecla F)", eu:"Arintasuna (F tekla)"},
   vr_btn:{es:"Entrar en VR", eu:"VRn sartu"},
   vr_err:{es:"No se ha podido entrar en realidad virtual.", eu:"Ezin izan da errealitate birtualean sartu."},
+  vr_sin_imagen:{es:"Las gafas no han mostrado ninguna imagen", eu:"Betaurrekoek ez dute irudirik erakutsi"},
   vr_maqueta:{es:"Ver la maqueta", eu:"Maketa ikusi"}, vr_circuito:{es:"Ir al circuito", eu:"Zirkuitura joan"},
   vr_vista:{es:"Vista", eu:"Ikuspegia"}, vr_v_pie:{es:"de pie", eu:"zutik"}, vr_v_pers:{es:"persecución", eu:"jarraipena"}, vr_v_bordo:{es:"a bordo", eu:"barruan"},
   vr_conducir:{es:"Conducir", eu:"Gidatu"}, vr_parar:{es:"Parar", eu:"Gelditu"},
@@ -1334,7 +1335,7 @@ function loadModel(){
     renderParts();
     buildDims();
     document.getElementById("loading").classList.add("hidden");
-    renderer.setAnimationLoop(animate);   // el mismo bucle sirve dentro de las gafas
+    renderer.setAnimationLoop(function(t,f){ try{ animate(t,f); }catch(e){ vr.ultimoError=(e && e.message)||String(e); console.error(e); } });   // el mismo bucle sirve en las gafas y no se para por un error
     iniciaVR();
   },function(err){
     var el=document.getElementById("loading");
@@ -2205,20 +2206,34 @@ function iniciaVR(){
 function entraVR(){
   if(vr.sesion){ vr.sesion.end(); return; }
   if(vr.pidiendo) return;                  // no lanzar otra petición mientras hay una en curso
-  vr.pidiendo=true;
+  vr.pidiendo=true; vr.fallo=null;
   navigator.xr.requestSession("immersive-vr",{optionalFeatures:["local-floor","bounded-floor"]}).then(function(ses){
-    vr.pidiendo=false;
-    vr.sesion=ses;
+    vr.pidiendo=false; vr.sesion=ses; vr.frames=0;
     vr.autonomas=/OculusBrowser|Quest|Pico/i.test(navigator.userAgent);    // Quest o Pico sin ordenador
-    renderer.xr.setFramebufferScaleFactor(vr.autonomas ? 0.75 : 1.0);      // los splats cuestan por píxel pintado
-    renderer.xr.enabled=true;
-    renderer.xr.setReferenceSpaceType("local-floor");
-    if(renderer.xr.setFoveation) renderer.xr.setFoveation(1);
-    montaVR();
-    renderer.xr.setSession(ses);
     ses.addEventListener("end", saleVR);
-    aplicaPresupuestoVR();
-  }).catch(function(e){ vr.pidiendo=false; avisa(t("vr_err")+" "+(e ? (e.name||"")+(e.message?": "+e.message:"") : ""), 10000); });
+    // no todas las gafas dan el suelo como referencia: si no, la básica y la altura de los ojos a mano
+    return ses.requestReferenceSpace("local-floor").then(function(){ return "local-floor"; }, function(){ return "local"; })
+    .then(function(tipo){
+      vr.tipoRef=tipo; vr.alturaOjos=(tipo==="local") ? 1.6 : 0;
+      renderer.xr.setFramebufferScaleFactor(vr.autonomas ? 0.75 : 1.0);   // los splats cuestan por píxel pintado
+      renderer.xr.enabled=true;
+      renderer.xr.setReferenceSpaceType(tipo);
+      if(renderer.xr.setFoveation) renderer.xr.setFoveation(1);
+      montaVR();
+      return renderer.xr.setSession(ses);
+    }).then(function(){
+      aplicaPresupuestoVR();
+      // vigilante: si en 4 s las gafas no han mostrado ni una imagen, salir y explicar por qué
+      setTimeout(function(){
+        if(vr.sesion===ses && !vr.frames){ vr.fallo=t("vr_sin_imagen")+" ("+vr.tipoRef+")"+(vr.ultimoError?" · "+vr.ultimoError:""); ses.end(); }
+      }, 4000);
+    });
+  }).catch(function(e){
+    vr.pidiendo=false;
+    var msg=e ? (e.name||"")+(e.message?": "+e.message:"") : "";
+    if(vr.sesion){ vr.fallo=msg; try{ vr.sesion.end(); }catch(x){} }
+    else avisa(t("vr_err")+" "+msg, 12000);
+  });
 }
 var PRESU_VR={movil:150000, alta:250000, maxima:400000};   // tope de splats en gafas autónomas (Quest 2 y similares)
 function aplicaPresupuestoVR(){
@@ -2268,6 +2283,7 @@ function montaVR(){
 }
 function saleVR(){
   vr.sesion=null;
+  if(vr.fallo){ var f=vr.fallo; vr.fallo=null; setTimeout(function(){ avisa(t("vr_err")+" "+f, 15000); }, 300); }
   aplicaPresupuestoVR();
   if(vr.rig) vr.rig.remove(camera);
   if(vr.camPos){ camera.position.copy(vr.camPos); camera.quaternion.copy(vr.camQuat); }
@@ -2281,7 +2297,7 @@ function colocaRig(forzar, dt){
   var cp=car.position, fx=Math.sin(st.psi), fz=Math.cos(st.psi), obj=new THREE.Vector3(), yaw;
   if(vr.vista==="pie"){
     if(!forzar) return;
-    obj.set(cp.x+2.6*fz, cp.y, cp.z-2.6*fx); yaw=Math.atan2(cp.x-obj.x, cp.z-obj.z)+Math.PI;
+    obj.set(cp.x+2.6*fz, cp.y+(vr.alturaOjos||0), cp.z-2.6*fx); yaw=Math.atan2(cp.x-obj.x, cp.z-obj.z)+Math.PI;
     vr.rig.position.copy(obj); vr.rig.rotation.set(0,yaw,0); return;
   }
   // persecución y a bordo: la cámara nunca gira sola de forma continua (es lo que más marea en VR).
@@ -2290,8 +2306,8 @@ function colocaRig(forzar, dt){
   var d=Math.atan2(Math.sin(yaw-vr.rig.rotation.y), Math.cos(yaw-vr.rig.rotation.y));
   if(forzar || !dt || Math.abs(d)>0.7) vr.rig.rotation.set(0,yaw,0);
   var g=vr.rig.rotation.y, vx=-Math.sin(g), vz=-Math.cos(g);        // hacia dónde miras
-  if(vr.vista==="persecucion") obj.set(cp.x-4.5*vx, cp.y, cp.z-4.5*vz);
-  else obj.set(cp.x+0.15*fx, cp.y, cp.z+0.15*fz);
+  if(vr.vista==="persecucion") obj.set(cp.x-4.5*vx, cp.y+(vr.alturaOjos||0), cp.z-4.5*vz);
+  else obj.set(cp.x+0.15*fx, cp.y+(vr.alturaOjos||0), cp.z+0.15*fz);
   if(forzar || !dt || Math.abs(d)>0.7){ vr.rig.position.copy(obj); return; }
   vr.rig.position.lerp(obj, 1-Math.exp(-dt*8));
 }
@@ -2391,6 +2407,7 @@ function muestraInfoVR(k){
 }
 function pasoVR(dt){
   if(!vr.sesion) return;
+  vr.frames=(vr.frames||0)+1;
   var izq=null, der=null;
   vr.ctrls.forEach(function(c){ if(c.userData.mano==="left") izq=c; else if(c.userData.mano==="right") der=c; });
   // el menú va en la muñeca izquierda; sin mando izquierdo, flota delante
