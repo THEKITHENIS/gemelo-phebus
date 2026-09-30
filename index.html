@@ -475,7 +475,7 @@ footer{
 
 <footer>
   <span class="foot-txt" data-i18n="foot1">Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)</span>
-  <span data-i18n="foot2">v8.9 · septiembre de 2026</span>
+  <span data-i18n="foot2">v9.0 · septiembre de 2026</span>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -513,7 +513,7 @@ var TXT = {
   v_path:{es:"Trayectoria", eu:"Ibilbidea"},
   foot1:{es:"Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)",
          eu:"Datuak eta argazkiak: Phebus-en eskuliburua, haien baimenarekin · 3D eredua PIX Moving-etik eratorria (Apache-2.0)"},
-  foot2:{es:"v8.9 · septiembre de 2026", eu:"v1.4 · 2026ko iraila"},
+  foot2:{es:"v9.0 · septiembre de 2026", eu:"v1.4 · 2026ko iraila"},
   tab_drive:{es:"Conducción", eu:"Gidatzea"},
   tab_comp:{es:"Piezas", eu:"Piezak"},
   tab_spec:{es:"Ficha técnica", eu:"Fitxa teknikoa"},
@@ -2235,7 +2235,7 @@ function entraVR(){
     else avisa(t("vr_err")+" "+msg, 12000);
   });
 }
-var PRESU_VR={movil:150000, alta:250000, maxima:400000};   // tope de splats en gafas autónomas (Quest 2 y similares)
+var PRESU_VR={movil:150000, alta:200000, maxima:300000};   // tope de splats en gafas autónomas (Quest 2 y similares)
 var AJUSTES_VR={maxStdDev:Math.sqrt(5), behindFoveate:0.1, outsideFoveate:0.3, coneFov0:40, coneFov:100, coneFoveate:0.5};
 function aplicaPresupuestoVR(){
   if(typeof sparkR==="undefined" || !sparkR) return;
@@ -2313,18 +2313,19 @@ function colocaRig(forzar, dt){
     obj.set(cp.x+2.6*fz, cp.y+(vr.alturaOjos||0), cp.z-2.6*fx); yaw=Math.atan2(cp.x-obj.x, cp.z-obj.z)+Math.PI;
     vr.rig.position.copy(obj); vr.rig.rotation.set(0,yaw,0); return;
   }
-  // persecución y a bordo: la cámara nunca gira sola de forma continua (es lo que más marea en VR).
-  // Mantiene tu orientación y, cuando el coche se desvía más de 40°, se reorienta de golpe.
-  yaw=st.psi+Math.PI;
-  var d=Math.atan2(Math.sin(yaw-vr.rig.rotation.y), Math.cos(yaw-vr.rig.rotation.y));
-  var salta=Math.abs(d)>1.05;                                   // 60°: menos saltos en las curvas largas
-  if(salta && !forzar && dt) vr.parpadeo=1;                      // cada salto, tapado con un parpadeo
-  if(forzar || !dt || salta) vr.rig.rotation.set(0,yaw,0);
+  if(vr.vista==="bordo"){
+    // a bordo: pegado al chasis y girando con él, sin retraso (el chasis alrededor hace de referencia fija)
+    vr.rig.position.set(cp.x+0.15*fx, cp.y+(vr.alturaOjos||0), cp.z+0.15*fz);
+    vr.rig.rotation.set(0, st.psi+Math.PI, 0);
+    return;
+  }
+  // persecución: te desplazas con el coche sin girar nunca solo; el coche gira delante de ti.
+  // Para volver a ponerte detrás, el gatillo lateral de cualquier mando (recentra con un parpadeo).
+  if(forzar || !dt){ vr.rig.rotation.set(0, st.psi+Math.PI, 0); }
   var g=vr.rig.rotation.y, vx=-Math.sin(g), vz=-Math.cos(g);        // hacia dónde miras
-  if(vr.vista==="persecucion") obj.set(cp.x-4.5*vx, cp.y+(vr.alturaOjos||0), cp.z-4.5*vz);
-  else obj.set(cp.x+0.15*fx, cp.y+(vr.alturaOjos||0), cp.z+0.15*fz);
-  if(forzar || !dt || salta){ vr.rig.position.copy(obj); return; }
-  vr.rig.position.lerp(obj, 1-Math.exp(-dt*8));
+  obj.set(cp.x-4.5*vx, cp.y+(vr.alturaOjos||0), cp.z-4.5*vz);
+  if(forzar || !dt){ vr.rig.position.copy(obj); return; }
+  vr.rig.position.lerp(obj, 1-Math.exp(-dt*10));
 }
 function cicloVista(){ var o=["pie","persecucion","bordo"]; vr.vista=o[(o.indexOf(vr.vista)+1)%3]; colocaRig(true); }
 function vrAutonomo(){
@@ -2444,6 +2445,9 @@ function pasoVR(dt){
       var dirc=z(ax[0]);
       if(dirc){ if(st.auto && Math.abs(dirc)>0.5) tomaControl(); if(!st.auto) setInner(st.inner - dirc*45*dt); }
     }
+    var k1=f.handedness+"1", b1=!!(g.buttons[1] && g.buttons[1].pressed);
+    if(b1 && !vr.prev[k1] && vr.vista!=="pie"){ vr.parpadeo=1; colocaRig(true); }     // gatillo lateral: recentrar
+    vr.prev[k1]=b1;
     var k4=f.handedness+"4", k5=f.handedness+"5";
     var b4=!!(g.buttons[4] && g.buttons[4].pressed), b5=!!(g.buttons[5] && g.buttons[5].pressed);
     if(b4 && !vr.prev[k4]){
