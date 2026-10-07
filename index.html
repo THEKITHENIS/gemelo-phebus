@@ -473,10 +473,10 @@ footer{
   <p class="hint no-print" data-i18n="qr_tip">Si el botón de imprimir no responde, abre el visor en una pestaña propia y usa Imprimir del navegador.</p>
 </div>
 
-<div id="pano-velo" hidden style="position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(5,8,12,.55);color:#fff;font:600 18px system-ui,sans-serif;pointer-events:all"><span data-i18n="pano_gen">Generando la panorámica…</span></div>
+<div id="pano-velo" style="position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;background:rgba(5,8,12,.55);color:#fff;font:600 18px system-ui,sans-serif;pointer-events:all"><span data-i18n="pano_gen">Generando la panorámica…</span></div>
 <footer>
   <span class="foot-txt" data-i18n="foot1">Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)</span>
-  <span data-i18n="foot2">v9.2 · octubre de 2026</span>
+  <span data-i18n="foot2">v9.3 · octubre de 2026</span>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -514,7 +514,7 @@ var TXT = {
   v_path:{es:"Trayectoria", eu:"Ibilbidea"},
   foot1:{es:"Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)",
          eu:"Datuak eta argazkiak: Phebus-en eskuliburua, haien baimenarekin · 3D eredua PIX Moving-etik eratorria (Apache-2.0)"},
-  foot2:{es:"v9.2 · octubre de 2026", eu:"v1.4 · 2026ko iraila"},
+  foot2:{es:"v9.3 · octubre de 2026", eu:"v1.4 · 2026ko iraila"},
   tab_drive:{es:"Conducción", eu:"Gidatzea"},
   tab_comp:{es:"Piezas", eu:"Piezak"},
   tab_spec:{es:"Ficha técnica", eu:"Fitxa teknikoa"},
@@ -2601,7 +2601,7 @@ function esperaFrame(){ return new Promise(function(r){ requestAnimationFrame(fu
 async function generaPanoramica(cont, form, W, H){
   if(capturando || !st.circ || !circGrupo) return;
   capturando=true;
-  var velo=document.getElementById("pano-velo"); velo.hidden=false;
+  var velo=document.getElementById("pano-velo"); velo.style.display="flex";
   renderer.setAnimationLoop(null);                                   // solo dibujamos nosotros mientras dura la captura
   var prevPR=renderer.getPixelRatio(), prevSize=renderer.getSize(new THREE.Vector2());
   var prev={bg:scene.background, car:car.visible, nube:nubeMapa?nubeMapa.visible:false, lidar:lidarMalla?lidarMalla.visible:false,
@@ -2692,7 +2692,7 @@ async function generaPanoramica(cont, form, W, H){
     splatsSpark.forEach(function(m,i){ m.visible=prev.spl[i]; });
     dispatchEvent(new Event("resize"));                               // recolocar el lienzo a su tamaño normal
     renderer.setAnimationLoop(bucleAnim);
-    velo.hidden=true; capturando=false;
+    velo.style.display="none"; capturando=false;
   }
 }
 
