@@ -475,7 +475,7 @@ footer{
 
 <footer>
   <span class="foot-txt" data-i18n="foot1">Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)</span>
-  <span data-i18n="foot2">v9.0 · septiembre de 2026</span>
+  <span data-i18n="foot2">v9.1 · octubre de 2026</span>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -513,7 +513,7 @@ var TXT = {
   v_path:{es:"Trayectoria", eu:"Ibilbidea"},
   foot1:{es:"Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)",
          eu:"Datuak eta argazkiak: Phebus-en eskuliburua, haien baimenarekin · 3D eredua PIX Moving-etik eratorria (Apache-2.0)"},
-  foot2:{es:"v9.0 · septiembre de 2026", eu:"v1.4 · 2026ko iraila"},
+  foot2:{es:"v9.1 · octubre de 2026", eu:"v1.4 · 2026ko iraila"},
   tab_drive:{es:"Conducción", eu:"Gidatzea"},
   tab_comp:{es:"Piezas", eu:"Piezak"},
   tab_spec:{es:"Ficha técnica", eu:"Fitxa teknikoa"},
@@ -582,6 +582,7 @@ var TXT = {
   vr_obst_on:{es:"Poner obstáculo", eu:"Oztopoa jarri"}, vr_obst_off:{es:"Quitar obstáculo", eu:"Oztopoa kendu"},
   vr_cal:{es:"Calidad", eu:"Kalitatea"}, vr_q_movil:{es:"móvil", eu:"mugikorra"}, vr_q_alta:{es:"alta", eu:"altua"}, vr_q_max:{es:"máxima", eu:"gorena"},
   vr_salir:{es:"Salir de VR", eu:"VRtik irten"},
+  vr_entorno:{es:"Entorno", eu:"Ingurunea"}, vr_e_mapa:{es:"mapa + LiDAR", eu:"mapa + LiDARra"}, vr_e_lidar:{es:"solo LiDAR", eu:"LiDARra bakarrik"}, vr_e_solo_mapa:{es:"solo mapa", eu:"mapa bakarrik"},
   med_fps:{es:"Fotogramas por segundo", eu:"Irudi segundoko"},
   med_peor:{es:"Peor fotograma (5 s)", eu:"Irudirik txarrena (5 s)"},
   med_tir:{es:"Tirones > 50 ms (10 s)", eu:"Tirakadak > 50 ms (10 s)"},
@@ -2135,10 +2136,23 @@ function cargaCircuito(){
   colocaEnCircuito();
   if(!nivelCirc) nivelCirc = movilFlojo() ? "movil" : "alta";
   compruebaGrafica();
+  circGrupo=new THREE.Group(); scene.add(circGrupo);
+  cargaPuntosCircuito();                       // mapa de puntos y LiDAR virtual
+  if(vr.sesion){                               // en VR no hay circuito real: solo lo que percibe la plataforma
+    circCargando=false; st.splats=false;
+    document.getElementById("loading").classList.add("hidden");
+    pintaCalidad(); pintaZonasInfo(); pintaCircuito(); aplicaEntornoVR();
+    return;
+  }
+  montaSpark();
+}
+function montaSpark(){
+  if(sparkR || vr.sesion){ circCargando=false; return; }
+  circCargando=true;
+  document.getElementById("loading").classList.remove("hidden");
   Promise.all([cargaSpark(), fetch("rad/indice.json").then(function(r){ if(!r.ok) throw {falta:"rad/indice.json"}; return r.json(); })])
   .then(function(res){
     var S=res[0], ind=res[1];
-    circGrupo=new THREE.Group(); scene.add(circGrupo);
     sparkR=new S.SparkRenderer({renderer:renderer, pagedExtSplats:true});   // precisión ampliada: el circuito mide ~200 m
     sparkR.lodSplatScale=ESCALA_LOD[nivelCirc]||1;
     scene.add(sparkR);
@@ -2150,12 +2164,13 @@ function cargaCircuito(){
     st.splats=true; nivelActual=nivelCirc; circCargando=false;
     document.getElementById("loading").classList.add("hidden");
     pintaCalidad(); pintaZonasInfo(); pintaCircuito();
-    cargaPuntosCircuito();
+    if(vr.sesion) aplicaEntornoVR();
   }).catch(function(err){
     console.warn("Circuito con Spark no disponible, uso la nube de puntos:", err);
     circCargando=false;
     document.getElementById("loading").classList.add("hidden");
     if(err && err.falta) avisa(t("falta").replace("{f}", err.falta), 7000);
+    if(circGrupo){ scene.remove(circGrupo); circGrupo=null; nubeMapa=null; }
     montaCircuito(b64bytes(CIRC_PTS), CIRC.lite);
   });
 }
@@ -2223,6 +2238,8 @@ function entraVR(){
       return renderer.xr.setSession(ses);
     }).then(function(){
       aplicaPresupuestoVR();
+      vr.fondoPrevio=scene.background;
+      aplicaEntornoVR();
       // vigilante: si en 4 s las gafas no han mostrado ni una imagen, salir y explicar por qué
       setTimeout(function(){
         if(vr.sesion===ses && !vr.frames){ vr.fallo=t("vr_sin_imagen")+" ("+vr.tipoRef+")"+(vr.ultimoError?" · "+vr.ultimoError:""); ses.end(); }
@@ -2247,6 +2264,22 @@ function aplicaPresupuestoVR(){
     for(var k3 in vr.ajustesPantalla) sparkR[k3]=vr.ajustesPantalla[k3];
     sparkR.lodSplatCount=undefined; sparkR.lodSplatScale=ESCALA_LOD[nivelCirc]||1;   // fuera de VR, el automático de Spark
   }
+}
+var ENTORNOS_VR=["mapa","lidar","solo_mapa"];
+function ocultaSplatsVR(){
+  if(typeof sparkR!=="undefined" && sparkR) sparkR.visible=false;
+  if(typeof splatsSpark!=="undefined") splatsSpark.forEach(function(m){ m.visible=false; });
+}
+function aplicaEntornoVR(){
+  if(!vr.sesion || !st.circ || !circGrupo) return;
+  vr.entorno=vr.entorno||"mapa";
+  scene.background=new THREE.Color(0x05080c);                  // fondo oscuro, como en RViz
+  muestraNube(vr.entorno!=="lidar");                            // mapa de puntos coloreado por altura
+  st.soloLidar=false;
+  st.verLidar=(vr.entorno!=="solo_mapa");
+  if(st.verLidar) iniciaLidar();
+  if(lidarMalla) lidarMalla.visible=st.verLidar;
+  ocultaSplatsVR();
 }
 function redondo(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
 function envuelve(c,txt,x,y,maxW,alto,maxL){
@@ -2295,6 +2328,13 @@ function montaVR(){
 }
 function saleVR(){
   vr.sesion=null;
+  if(nubeMapa) nubeMapa.geometry.setDrawRange(0, Infinity);
+  if(st.circ && circGrupo){
+    if(typeof sparkR!=="undefined" && sparkR) sparkR.visible=true; else montaSpark();
+    if(vr.fondoPrevio!==undefined) scene.background=vr.fondoPrevio;
+    modoLidar(st.lidarModo||"off");                             // mapa, LiDAR y splats como estaban en la pantalla
+    pintaCircuito();
+  }
   if(vr.fallo){ var f=vr.fallo; vr.fallo=null; setTimeout(function(){ avisa(t("vr_err")+" "+f, 15000); }, 300); }
   aplicaPresupuestoVR();
   if(vr.velo){ vr.velo.visible=false; camera.remove(vr.velo); }
@@ -2344,14 +2384,16 @@ function pintaMenuVR(){
   if(!vr.cvs) return;
   var L=t, lm={off:L("vr_l_off"), circuito:L("vr_l_circ"), solo:L("vr_l_solo"), mapa:L("vr_l_mapa")};
   vr.botones=[
-    {t: st.circ ? L("vr_maqueta") : L("vr_circuito"), a:function(){ document.getElementById("t-circ").click(); colocaRig(true); }},
+    {t: st.circ ? L("vr_maqueta") : L("vr_circuito"), a:function(){ document.getElementById("t-circ").click(); colocaRig(true); aplicaEntornoVR(); }},
     {t: L("vr_vista")+": "+({pie:L("vr_v_pie"), persecucion:L("vr_v_pers"), bordo:L("vr_v_bordo")})[vr.vista], a:cicloVista},
     {t: st.driving ? L("vr_parar") : L("vr_conducir"), a:function(){ if(st.auto) tomaControl(); if(st.driving){ st.v=0; setDriving(false); syncInputs(); } else setDriving(true); }},
     {t: (st.auto && st.awPP) ? L("vr_auto_off") : L("vr_auto_on"), a:vrAutonomo},
     {t: L("vr_elec")+(st.interior?"  ✓":""), a:function(){ st.interior=!st.interior; pintaInterior(); try{ renderElec(); renderParts(); }catch(e){} }},
-    {t: L("vr_lidar")+": "+lm[st.lidarModo||"off"], a:function(){ if(!st.circ) document.getElementById("t-circ").click(); var o=["off","circuito","solo","mapa"]; modoLidar(o[(o.indexOf(st.lidarModo||"off")+1)%4]); }},
+    {t: L("vr_entorno")+": "+({mapa:L("vr_e_mapa"), lidar:L("vr_e_lidar"), solo_mapa:L("vr_e_solo_mapa")})[vr.entorno||"mapa"], a:function(){
+        if(!st.circ){ document.getElementById("t-circ").click(); colocaRig(true); }
+        else vr.entorno=ENTORNOS_VR[(ENTORNOS_VR.indexOf(vr.entorno||"mapa")+1)%3];
+        aplicaEntornoVR(); }},
     {t: st.obst ? L("vr_obst_off") : L("vr_obst_on"), a:function(){ if(st.circ) colocaObstaculo(!st.obst); }},
-    {t: L("vr_cal")+": "+({movil:L("vr_q_movil"), alta:L("vr_q_alta"), maxima:L("vr_q_max")})[nivelCirc||"alta"]+(vr.autonomas?" · "+Math.round(PRESU_VR[nivelCirc||"alta"]/1000)+" k":""), a:function(){ var o=["movil","alta","maxima"]; cargaNivel(o[(o.indexOf(nivelCirc||"alta")+1)%3]); }},
     {t: L("vr_salir"), a:function(){ if(vr.sesion) vr.sesion.end(); }}
   ];
   var c=vr.cvs.getContext("2d"), W=vr.cvs.width, H=vr.cvs.height;
@@ -2424,6 +2466,10 @@ function muestraInfoVR(k){
 function pasoVR(dt){
   if(!vr.sesion) return;
   vr.frames=(vr.frames||0)+1;
+  if(st.circ){
+    ocultaSplatsVR();
+    if(nubeMapa) nubeMapa.geometry.setDrawRange(0, vr.autonomas ? 350000 : Infinity);   // ~350 000 puntos en Quest y Pico
+  }
   var izq=null, der=null;
   vr.ctrls.forEach(function(c){ if(c.userData.mano==="left") izq=c; else if(c.userData.mano==="right") der=c; });
   // el menú va en la muñeca izquierda; sin mando izquierdo, flota delante
@@ -3608,11 +3654,15 @@ function muestraNube(on){
   st.verNube=on;
   if(on && !nubeMapa && !puntosCircuito){ cargaPuntosCircuito().then(function(P){ if(P && st.verNube) muestraNube(true); }); return; }
   if(on && !nubeMapa && puntosCircuito){
-    var C=null, n=puntosCircuito.length/3, paso=Math.max(1,Math.floor(n/900000));
+    var C=null, n=puntosCircuito.length/3, paso=Math.max(1,Math.floor(n/900000)), tc;
     var pos=new Float32Array(Math.ceil(n/paso)*3), col=new Float32Array(Math.ceil(n/paso)*3), k=0;
     for(var i=0;i<n;i+=paso){
       var x=puntosCircuito[i*3], y=puntosCircuito[i*3+1], z=puntosCircuito[i*3+2], c=colorAltura(y-(alturaSuelo(x,z)||0));
       pos[k*3]=x; pos[k*3+1]=y; pos[k*3+2]=z; col[k*3]=c.r; col[k*3+1]=c.g; col[k*3+2]=c.b; k++;
+    }
+    for(var j=k-1;j>0;j--){                                     // barajar: un recorte del total sigue cubriendo todo el circuito
+      var r=Math.floor(Math.random()*(j+1));
+      for(var e=0;e<3;e++){ var tp=pos[j*3+e]; pos[j*3+e]=pos[r*3+e]; pos[r*3+e]=tp; tc=col[j*3+e]; col[j*3+e]=col[r*3+e]; col[r*3+e]=tc; }
     }
     var g=new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(pos.subarray(0,k*3),3));
@@ -3746,7 +3796,11 @@ function pintaLidar(){
 function colocaObstaculo(on){
   st.obst=on;
   if(on){
-    var R=ruta&&ruta.length?ruta:CIRC.ruta_oficial, i=(st.idxRuta+24)%R.length, x=R[i][0], z=R[i][1], h=alturaSuelo(x,z)||0;
+    var R=ruta&&ruta.length?ruta:CIRC.ruta_oficial, i0=st.idxRuta;
+    if(typeof i0!=="number" || !isFinite(i0)){                    // sin ruta en marcha: el punto de la ruta más cercano al coche
+      i0=0; var dm=1e9; for(var q=0;q<R.length;q++){ var dq=Math.hypot(R[q][0]-st.X, R[q][1]-st.Z); if(dq<dm){ dm=dq; i0=q; } }
+    }
+    var i=(i0+24)%R.length, x=R[i][0], z=R[i][1], h=alturaSuelo(x,z)||0;
     if(!obstMalla){
       obstMalla=new THREE.Group();
       var mat=new THREE.MeshStandardMaterial({color:0xff7a1a, roughness:0.6});
