@@ -473,9 +473,10 @@ footer{
   <p class="hint no-print" data-i18n="qr_tip">Si el botón de imprimir no responde, abre el visor en una pestaña propia y usa Imprimir del navegador.</p>
 </div>
 
+<div id="pano-velo" hidden style="position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(5,8,12,.55);color:#fff;font:600 18px system-ui,sans-serif;pointer-events:all"><span data-i18n="pano_gen">Generando la panorámica…</span></div>
 <footer>
   <span class="foot-txt" data-i18n="foot1">Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)</span>
-  <span data-i18n="foot2">v9.1 · octubre de 2026</span>
+  <span data-i18n="foot2">v9.2 · octubre de 2026</span>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -513,7 +514,7 @@ var TXT = {
   v_path:{es:"Trayectoria", eu:"Ibilbidea"},
   foot1:{es:"Datos y fotografías: manual de Phebus, con su autorización · Modelo 3D derivado de PIX Moving (Apache-2.0)",
          eu:"Datuak eta argazkiak: Phebus-en eskuliburua, haien baimenarekin · 3D eredua PIX Moving-etik eratorria (Apache-2.0)"},
-  foot2:{es:"v9.1 · octubre de 2026", eu:"v1.4 · 2026ko iraila"},
+  foot2:{es:"v9.2 · octubre de 2026", eu:"v1.4 · 2026ko iraila"},
   tab_drive:{es:"Conducción", eu:"Gidatzea"},
   tab_comp:{es:"Piezas", eu:"Piezak"},
   tab_spec:{es:"Ficha técnica", eu:"Fitxa teknikoa"},
@@ -582,6 +583,14 @@ var TXT = {
   vr_obst_on:{es:"Poner obstáculo", eu:"Oztopoa jarri"}, vr_obst_off:{es:"Quitar obstáculo", eu:"Oztopoa kendu"},
   vr_cal:{es:"Calidad", eu:"Kalitatea"}, vr_q_movil:{es:"móvil", eu:"mugikorra"}, vr_q_alta:{es:"alta", eu:"altua"}, vr_q_max:{es:"máxima", eu:"gorena"},
   vr_salir:{es:"Salir de VR", eu:"VRtik irten"},
+  pano_h:{es:"Panorámica para el aula inmersiva", eu:"Gela murgiltzailerako panoramikoa"},
+  pano_c_real:{es:"Circuito real", eu:"Benetako zirkuitua"}, pano_c_perc:{es:"Lo que percibe", eu:"Hautematen duena"},
+  pano_f_esf:{es:"360° esférica", eu:"360° esferikoa"}, pano_f_4p:{es:"4 paredes", eu:"4 horma"},
+  pano_res:{es:"Resolución total de las 4 paredes", eu:"4 hormen bereizmen osoa"},
+  pano_btn:{es:"Generar y descargar", eu:"Sortu eta deskargatu"},
+  pano_help:{es:"Desde el sitio del coche, a 1,7 m de altura. La esférica (8192×4096) va como fondo esférico de SimRoom; la de 4 paredes, como fondo panorámico, con la resolución total del panel PC-Groups de SimRoom_Control.", eu:"Autoaren tokitik, 1,7 m-ko altueran. Esferikoa (8192×4096) SimRoom-eko atzeko plano esferiko gisa doa; 4 hormakoa, atzeko plano panoramiko gisa, SimRoom_Control-eko PC-Groups paneleko bereizmen osoarekin."},
+  pano_gen:{es:"Generando la panorámica…", eu:"Panoramikoa sortzen…"},
+  pano_ok:{es:"Panorámica descargada:", eu:"Panoramikoa deskargatuta:"}, pano_err:{es:"No se ha podido generar la panorámica:", eu:"Ezin izan da panoramikoa sortu:"},
   vr_entorno:{es:"Entorno", eu:"Ingurunea"}, vr_e_mapa:{es:"mapa + LiDAR", eu:"mapa + LiDARra"}, vr_e_lidar:{es:"solo LiDAR", eu:"LiDARra bakarrik"}, vr_e_solo_mapa:{es:"solo mapa", eu:"mapa bakarrik"},
   med_fps:{es:"Fotogramas por segundo", eu:"Irudi segundoko"},
   med_peor:{es:"Peor fotograma (5 s)", eu:"Irudirik txarrena (5 s)"},
@@ -1336,7 +1345,7 @@ function loadModel(){
     renderParts();
     buildDims();
     document.getElementById("loading").classList.add("hidden");
-    renderer.setAnimationLoop(function(t,f){ try{ animate(t,f); }catch(e){ vr.ultimoError=(e && e.message)||String(e); console.error(e); } });   // el mismo bucle sirve en las gafas y no se para por un error
+    renderer.setAnimationLoop(bucleAnim);   // el mismo bucle sirve en las gafas y no se para por un error
     iniciaVR();
   },function(err){
     var el=document.getElementById("loading");
@@ -2536,6 +2545,7 @@ function compruebaGrafica(){
 }
 function pintaCalidad(){
   var bo=document.getElementById("btn-ofi"); if(bo) bo.hidden = !(st.circ && CIRC.ruta_oficial);
+  var pg=document.getElementById("pano-grp"); if(pg) pg.hidden = !st.circ;
   var el=document.getElementById("q-sel"); if(!el) return;
   el.parentNode.hidden = !st.circ || !st.splats;
   el.querySelectorAll("button").forEach(function(b){
@@ -2583,6 +2593,109 @@ function camaraJuego(dt){
   camera.lookAt(camObj);
   return true;
 }
+var bucleAnim=function(t,f){ try{ animate(t,f); }catch(e){ vr.ultimoError=(e && e.message)||String(e); console.error(e); } };
+
+/* ---------- panorámica para el aula inmersiva (SimRoom) ---------- */
+var capturando=false;
+function esperaFrame(){ return new Promise(function(r){ requestAnimationFrame(function(){ r(); }); }); }
+async function generaPanoramica(cont, form, W, H){
+  if(capturando || !st.circ || !circGrupo) return;
+  capturando=true;
+  var velo=document.getElementById("pano-velo"); velo.hidden=false;
+  renderer.setAnimationLoop(null);                                   // solo dibujamos nosotros mientras dura la captura
+  var prevPR=renderer.getPixelRatio(), prevSize=renderer.getSize(new THREE.Vector2());
+  var prev={bg:scene.background, car:car.visible, nube:nubeMapa?nubeMapa.visible:false, lidar:lidarMalla?lidarMalla.visible:false,
+            spk:(typeof sparkR!=="undefined"&&sparkR)?sparkR.visible:null, esc:(typeof sparkR!=="undefined"&&sparkR)?sparkR.lodSplatScale:1,
+            spl:splatsSpark.map(function(m){ return m.visible; }), verNube:st.verNube};
+  try{
+    // la escena según lo que se quiere ver
+    car.visible=false;                                               // estamos en el sitio del coche
+    if(cont==="percibe"){
+      scene.background=new THREE.Color(0x05080c);
+      st.verNube=true; muestraNube(true);
+      if(!nubeMapa){ await cargaPuntosCircuito(); muestraNube(true); }
+      if(nubeMapa){ nubeMapa.visible=true; nubeMapa.geometry.setDrawRange(0, Infinity); prev.tamNube=nubeMapa.material.size; nubeMapa.material.size*=0.5; }
+      if(lidarMalla){ lidarMalla.visible=true; prev.tamLidar=lidarMalla.material.size; lidarMalla.material.size*=0.5; }   // a 8K sobra resolución: puntos más finos
+      if(sparkR) sparkR.visible=false; splatsSpark.forEach(function(m){ m.visible=false; });
+    } else {
+      scene.background=new THREE.Color(0xdfe6ec);
+      if(nubeMapa) nubeMapa.visible=false; if(lidarMalla) lidarMalla.visible=false;
+      if(sparkR){ sparkR.visible=true; sparkR.lodSplatScale=3; } splatsSpark.forEach(function(m){ m.visible=true; });
+    }
+    var pos=new THREE.Vector3(st.X, (alturaSuelo(st.X,st.Z)||0)+1.7, st.Z);
+    var adelante=new THREE.Vector3(Math.sin(st.psi),0,Math.cos(st.psi)), dcha=new THREE.Vector3(-Math.cos(st.psi),0,Math.sin(st.psi));
+    var esperas = window.__esperasPano || ((cont==="percibe") ? 3 : 24);   // (__esperasPano: solo para pruebas)
+    var extraIni = window.__esperasPano ? 0 : 40;                             // la primera vista del circuito espera a que Spark cargue el detalle
+    renderer.setPixelRatio(1);
+    // dibuja una vista y la copia a un lienzo
+    async function vista(dir, arriba, fovV, w, h, extra){
+      renderer.setSize(w, h, false);
+      var cam=new THREE.PerspectiveCamera(fovV, w/h, 0.05, 3000);
+      cam.position.copy(pos); cam.up.copy(arriba); cam.lookAt(pos.clone().add(dir));
+      var c=document.createElement("canvas"); c.width=w; c.height=h; var x=c.getContext("2d");
+      for(var k=0;k<esperas+(extra||0);k++){ renderer.render(scene, cam); if(k===esperas+(extra||0)-1) x.drawImage(renderer.domElement,0,0); await esperaFrame(); }
+      return c;
+    }
+    var salida=document.createElement("canvas"), sx;
+    if(form==="esferica"){
+      var F=Math.round(W/4); W=F*4; H=F*2;
+      var arriba=new THREE.Vector3(0,1,0), detras=adelante.clone().negate(), izda=dcha.clone().negate();
+      var caras={
+        f: await vista(adelante, arriba, 90, F, F, (cont==="percibe")?0:extraIni),
+        r: await vista(dcha, arriba, 90, F, F), b: await vista(detras, arriba, 90, F, F), l: await vista(izda, arriba, 90, F, F),
+        u: await vista(new THREE.Vector3(0,1,0), detras.clone(), 90, F, F),
+        d: await vista(new THREE.Vector3(0,-1,0), adelante.clone(), 90, F, F)
+      };
+      var px={}; for(var n in caras) px[n]=caras[n].getContext("2d").getImageData(0,0,F,F).data;
+      salida.width=W; salida.height=H; sx=salida.getContext("2d");
+      var img=sx.createImageData(W,H), o=img.data;
+      var cosL=new Float32Array(W), sinL=new Float32Array(W);
+      for(var i=0;i<W;i++){ var lon=(i+0.5)/W*2*Math.PI-Math.PI; cosL[i]=Math.cos(lon); sinL[i]=Math.sin(lon); }
+      for(var j=0;j<H;j++){
+        var lat=Math.PI/2-(j+0.5)/H*Math.PI, cl=Math.cos(lat), sl=Math.sin(lat);
+        for(var i2=0;i2<W;i2++){
+          // dirección en el sistema del coche: a = adelante, r = derecha, u = arriba (centro de la imagen = adelante)
+          var a=cl*cosL[i2], r=cl*sinL[i2], u=sl, aa=Math.abs(a), ar=Math.abs(r), au=Math.abs(u), cara, sc, tc, m;
+          if(aa>=ar && aa>=au){ m=aa; if(a>0){ cara="f"; sc=r; tc=-u; } else { cara="b"; sc=-r; tc=-u; } }
+          else if(ar>=au){ m=ar; if(r>0){ cara="r"; sc=-a; tc=-u; } else { cara="l"; sc=a; tc=-u; } }
+          else { m=au; if(u>0){ cara="u"; sc=r; tc=a; } else { cara="d"; sc=r; tc=-a; } }
+          var fx=Math.min(F-1, Math.max(0, Math.floor((sc/m*0.5+0.5)*F))), fy=Math.min(F-1, Math.max(0, Math.floor((tc/m*0.5+0.5)*F)));
+          var si=(fy*F+fx)*4, di=(j*W+i2)*4, P=px[cara];
+          o[di]=P[si]; o[di+1]=P[si+1]; o[di+2]=P[si+2]; o[di+3]=255;
+        }
+        if(j%256===0) await esperaFrame();
+      }
+      sx.putImageData(img,0,0);
+    } else {
+      // 4 paredes: cuatro vistas de 90° (delante, derecha, detrás, izquierda), una por pared, a la resolución total
+      var w4=Math.round(W/4); W=w4*4;
+      var fovV=2*Math.atan(H/w4)*180/Math.PI;                         // 90° en horizontal en cada pared
+      salida.width=W; salida.height=H; sx=salida.getContext("2d");
+      var dirs=[adelante, dcha, adelante.clone().negate(), dcha.clone().negate()];
+      for(var q=0;q<4;q++){ var c4=await vista(dirs[q], new THREE.Vector3(0,1,0), fovV, w4, H, (q===0 && cont!=="percibe")?extraIni:0); sx.drawImage(c4, q*w4, 0); }
+    }
+    var nombre="phebus_"+(form==="esferica"?"360":"4paredes")+"_"+(cont==="percibe"?"percepcion":"circuito")+"_"+W+"x"+H+".jpg";
+    var blob=await new Promise(function(r){ salida.toBlob(r, "image/jpeg", 0.92); });
+    var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=nombre; document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+    window.__ultimaPanoramica={nombre:nombre, w:W, h:H, bytes:blob.size};
+    avisa(t("pano_ok")+" "+nombre, 7000);
+  } catch(e){ console.error(e); avisa(t("pano_err")+" "+(e&&e.message||e), 9000); }
+  finally {
+    // dejar la escena como estaba
+    renderer.setPixelRatio(prevPR); renderer.setSize(prevSize.x, prevSize.y, false);
+    scene.background=prev.bg; car.visible=prev.car;
+    if(nubeMapa){ nubeMapa.visible=prev.nube; if(prev.tamNube) nubeMapa.material.size=prev.tamNube; }
+    if(lidarMalla){ lidarMalla.visible=prev.lidar; if(prev.tamLidar) lidarMalla.material.size=prev.tamLidar; }
+    st.verNube=prev.verNube;
+    if(typeof sparkR!=="undefined" && sparkR){ sparkR.visible=prev.spk; sparkR.lodSplatScale=prev.esc; }
+    splatsSpark.forEach(function(m,i){ m.visible=prev.spl[i]; });
+    dispatchEvent(new Event("resize"));                               // recolocar el lienzo a su tamaño normal
+    renderer.setAnimationLoop(bucleAnim);
+    velo.hidden=true; capturando=false;
+  }
+}
+
 function avisa(texto, ms){
   var el=document.getElementById("aviso-choque"); if(!el) return;
   el.textContent=texto; el.hidden=false; el.classList.add("info");
@@ -3330,6 +3443,13 @@ function renderDrive(){
         "<button data-q='alta'>"+t("q_alta")+"</button>"+
         "<button data-q='maxima'>"+t("q_maxima")+"</button>"+
       "</div><p class='hint'>"+t("q_help")+"</p><p class='hint' id='zonas-info'></p></div>"+
+    "<div class='group' id='pano-grp' hidden><h2>"+t("pano_h")+"</h2>"+
+      "<div class='seg' id='pano-cont'><button data-pc='real' aria-pressed='true'>"+t("pano_c_real")+"</button><button data-pc='percibe' aria-pressed='false'>"+t("pano_c_perc")+"</button></div>"+
+      "<div class='seg' id='pano-form' style='margin-top:6px'><button data-pf='esferica' aria-pressed='true'>"+t("pano_f_esf")+"</button><button data-pf='paredes' aria-pressed='false'>"+t("pano_f_4p")+"</button></div>"+
+      "<div class='field' id='pano-res' hidden><div class='lab'><span>"+t("pano_res")+"</span></div>"+
+        "<div style='display:flex;gap:6px;align-items:center'><input type='number' id='pano-w' value='7680' min='800' max='32768' step='4' style='width:7em' aria-label='ancho'> × <input type='number' id='pano-h' value='1080' min='200' max='8192' style='width:6em' aria-label='alto'></div></div>"+
+      "<div class='actions'><button class='btn primary' id='pano-btn'>"+t("pano_btn")+"</button></div>"+
+      "<p class='hint'>"+t("pano_help")+"</p></div>"+
     "<div class='group'><h2>"+t("a_h1")+"</h2>"+
       "<div class='actions'>"+
         "<button class='btn' id='btn-rec'>"+t("a_rec")+"</button>"+
@@ -3373,6 +3493,17 @@ function renderDrive(){
   });
   document.getElementById("btn-clr").addEventListener("click",function(){
     ruta=[]; st.auto=false; st.rec=false; dibujaRuta(); pintaAuto();
+  });
+  var panoSel={c:"real", f:"esferica"};
+  document.querySelectorAll("#pano-cont button").forEach(function(b){ b.addEventListener("click",function(){
+    panoSel.c=b.dataset.pc; document.querySelectorAll("#pano-cont button").forEach(function(o){ o.setAttribute("aria-pressed", o===b?"true":"false"); }); }); });
+  document.querySelectorAll("#pano-form button").forEach(function(b){ b.addEventListener("click",function(){
+    panoSel.f=b.dataset.pf; document.querySelectorAll("#pano-form button").forEach(function(o){ o.setAttribute("aria-pressed", o===b?"true":"false"); });
+    document.getElementById("pano-res").hidden = panoSel.f!=="paredes"; }); });
+  document.getElementById("pano-btn").addEventListener("click",function(){
+    var W = panoSel.f==="esferica" ? 8192 : parseInt(document.getElementById("pano-w").value,10)||7680;
+    var H = panoSel.f==="esferica" ? 4096 : parseInt(document.getElementById("pano-h").value,10)||1080;
+    generaPanoramica(panoSel.c, panoSel.f, W, H);
   });
   document.querySelectorAll("#q-sel button").forEach(function(b){
     b.addEventListener("click",function(){
